@@ -1,0 +1,117 @@
+#!/bin/bash
+
+hostnamectl set-hostname br-srv.au-team.irpo;
+
+cat  > /etc/sysconfig/network <<EOF
+NETWORKING=yes
+CONFMETHOD=etcnet
+HOSTNAME=br-srv.au-team.irpo
+DOMAINNAME=localdomain
+RESOLV_MODS=yes
+EOF
+
+
+#Время
+apt-get update
+apt-get install tzdata
+find /usr/share/zoneinfo -name Krasnoyarsk
+timedatectl set-timezone Asia/Krasnoyarsk
+timedatectl
+
+
+#Chrony
+
+sed -i 's/pool pool.ntp.org iburst/pool 172.16.1.1 iburst/g' /etc/chrony.conf
+systemctl restart chronyd
+
+
+systemctl enable --now chronyd
+        systemctl restart chronyd
+echo "Настройка SSH"
+
+# Создание пользователя sshuser с UID 2027 (МЕНЯЙТЕ ИМЯ И Т.Д В ЗАВИСИМОСТИ ОТ ЗАДАНИЯ)
+useradd -u 2027 -m sshuser
+
+# Установка пароля P@ssw0rd без подтверждения
+echo "sshuser:P@ssw0rd" | chpasswd
+
+# Добавление в группу wheel
+gpasswd -a sshuser wheel
+
+# Настройка sudo без пароля
+echo "sshuser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+
+
+
+
+# Настройка SSH
+sed -i 's/#Port 22/Port 2027/' /etc/openssh/sshd_config
+sed -i 's/#PermitRootLogin without-password/PermitRootLogin no/' /etc/openssh/sshd_config
+sed -i 's/#PermitRootLogin without-password/PermitRootLogin no/' /etc/openssh/sshd_config
+echo "AllowUsers sshuser" >> /etc/openssh/sshd_config
+echo "MaxAuthTries 2" >> /etc/openssh/sshd_config
+echo "Banner /etc/openssh/banner" >> /etc/openssh/sshd_config
+
+# Создание баннера
+echo "Authorized access only" > /etc/openssh/banner
+
+# Перезапуск SSH
+systemctl restart sshd
+
+echo "Настройка завершена:"
+echo "- Пользователь: sshuser (пароль: P@ssw0rd)"
+echo "- SSH порт: 2027"
+echo "- Root-логин запрещен"
+echo "- Баннер создан"
+
+
+echo "- Скачиваем файл инвентаря"
+apt-get update && apt-get install -y ansible sshpass 
+cd /etc/ansible
+wget raw.githubusercontent.com/popanam/demo/refs/heads/main/inventory.yml
+
+wget raw.githubusercontent.com/popanam/demo/refs/heads/main/get.yml
+
+cd ~
+
+cat > /etc/ansible/ansible.cfg << EOF
+[defaults]
+
+interpreter_python = /usr/bin/python3
+inventory = /etc/ansible/inventory.yml
+host_key_cheking = false
+
+
+[inventory]
+[privilege_escalation]
+[paramiko_connection]
+[ssh_connection]
+[persistent_connection]
+[accelerate]
+[selinux]
+[colors]
+[diff]
+EOF
+
+ssh -p 2027 net_admin@192.168.0.1
+
+ssh -p 2027 net_admin@192.168.100.1
+
+ssh -p 2027 sshuser@192.168.100.2
+
+ssh -p 2027 sshuser@192.168.0.2
+
+ssh -p 2027 sshuser@192.168.200.3
+
+
+ansible -m ping all
+
+
+# Файл /etc/resolv.conf
+cat > /etc/resolv.conf << EOF
+nameserver 192.168.100.2
+search au-team.irpo
+EOF
+
+exec bash
